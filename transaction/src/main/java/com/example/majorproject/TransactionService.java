@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.json.simple.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
@@ -31,10 +32,7 @@ public class TransactionService {
                         .toUser(transactionRequestDto.getToUser()).transactionId(UUID.randomUUID().toString())
                         .transactionDate(new Date()).transactionStatus(TransactionStatus.PENDING)
                 .amount(transactionRequestDto.getAmount()).purpose(transactionRequestDto.getPurpose()).build();
-
-
         transactionRepository.save(transaction);
-
 
         //Create that JsonObject
         JSONObject jsonObject = new JSONObject();
@@ -47,6 +45,24 @@ public class TransactionService {
         String kafkaMessage = objectMapper.writeValueAsString(jsonObject);
         kafkaTemplate.send("update_wallet",kafkaMessage);
         System.out.println(kafkaMessage);
+    }
+
+    @KafkaListener(topics = "update_transaction", groupId = "friends_group")
+    public void updateTransaction(String message) throws JsonProcessingException {
+
+        JSONObject jsonObject = objectMapper.readValue(message,JSONObject.class);
+
+        String transactionStatus = (String) jsonObject.get("status");
+        String transactionId = (String) jsonObject.get("transactionId");
+
+        System.out.println("Reading the transactionTable Entries"+transactionStatus+"---"+transactionId);
+
+        Transaction transaction = transactionRepository.findByTransactionId(transactionId);
+        transaction.setTransactionStatus(TransactionStatus.valueOf(transactionStatus));
+        transactionRepository.save(transaction);
+
+        // CALL NOTIFICATION SERVICE AND SEND EMAILS
+        //callNotificationService(transaction)
     }
 
 }
