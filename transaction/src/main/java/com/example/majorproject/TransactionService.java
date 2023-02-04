@@ -5,10 +5,16 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.json.simple.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
+import java.net.HttpRetryException;
+import java.net.URI;
 import java.util.Date;
 import java.util.UUID;
 
@@ -23,6 +29,9 @@ public class TransactionService {
 
     @Autowired
     KafkaTemplate<String,String> kafkaTemplate;
+
+    @Autowired
+    RestTemplate restTemplate;
 
     public void createTransaction(TransactionRequestDto transactionRequestDto) throws JsonProcessingException {
 
@@ -62,7 +71,56 @@ public class TransactionService {
         transactionRepository.save(transaction);
 
         // CALL NOTIFICATION SERVICE AND SEND EMAILS
-        //callNotificationService(transaction)
+        callNotificationService(transaction);
+    }
+
+    private void callNotificationService(Transaction transaction) {
+        String fromUserName = transaction.getFromUser();
+        String toUserName = transaction.getToUser();
+
+        // We need to create REST API, call user service
+        URI url = URI.create("http://localhost:9999/user/find-EmailDto/"+fromUserName);
+        HttpEntity httpEntity = new HttpEntity(new HttpHeaders());
+
+        JSONObject fromUserJsonObject = restTemplate.
+                exchange(url, HttpMethod.GET, httpEntity, JSONObject.class).getBody();
+        String senderName = (String) fromUserJsonObject.get("name");
+        String senderEmail = (String) fromUserJsonObject.get("email");
+
+
+        url = URI.create("http://localhost:9999/user/find-EmailDto/"+toUserName);
+        httpEntity = new HttpEntity(new HttpHeaders());
+
+        JSONObject toUserJsonObject = restTemplate.
+                exchange(url, HttpMethod.GET, httpEntity, JSONObject.class).getBody();
+        String receiverName = (String) toUserJsonObject.get("name");
+        String receiverEmail = (String) toUserJsonObject.get("email");
+
+        //SEND THE EMAIL AND MESSAGE TO NOTIFICATIONS-SERVICE VIA KAFKA
+
+        // Sender should always receive the Email
+        JSONObject emailRequest = new JSONObject();
+        System.out.println("We are in transaction Service Layer"+senderName+" "+senderEmail+" "+receiverName+" "+receiverEmail);
+        emailRequest.put("email", senderEmail);
+        String senderMessageBody = String.format("Hi %s \n" +
+                "The transaction with transactionId %s has been %s of Rs %d .",
+                senderName, transaction.getTransactionId(), transaction.getTransactionStatus(), transaction.getAmount());
+        emailRequest.put("message", senderMessageBody);
+
+        String message = emailRequest.toString();
+        kafkaTemplate.send("send_email",message); // sending via kafka
+
+        if(transaction.getTransactionStatus().equals("FAILED")) return;
+
+        // Receiver should receive an email on Success transaction only
+        emailRequest = new JSONObject();
+        emailRequest.put("email",receiverEmail);
+        String receiverMessageBody = String.format(
+                "Hi %s \n" + "You have received an amount of %d Rs from %s",
+                receiverName, transaction.getAmount(),senderName);
+        emailRequest.put("message", receiverMessageBody);
+        message = emailRequest.toString();
+        kafkaTemplate.send("send_email", message);
     }
 
 }

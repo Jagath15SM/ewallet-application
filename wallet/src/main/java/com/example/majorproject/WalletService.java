@@ -25,6 +25,7 @@ public class WalletService {
     @KafkaListener(topics = "create_wallet",groupId = "test1234")
     public void createWallet(String message){
         Wallet wallet = Wallet.builder().userName(message).balance(100).build();
+        System.out.println("Created wallet for user : "+message);
         walletRepository.save(wallet);
     }
 

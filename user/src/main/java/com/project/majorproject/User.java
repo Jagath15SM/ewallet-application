@@ -24,8 +24,12 @@ public class User implements Serializable {
     @Column(unique = true)
     private String userName;
 
+    private String name;
+
     private int age;
 
     private String mobNo;
+
+    private String email;
 
 }
