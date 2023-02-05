@@ -70,7 +70,7 @@ public class EmailConfigurations {
 //        javaMailSender.setPort(587);
 //
 //        javaMailSender.setUsername("jagathsingularity@gmail.com");
-//        javaMailSender.setPassword("YinYang@15");
+//        javaMailSender.setPassword("Password@12345");
 //
 //        Properties properties = javaMailSender.getJavaMailProperties();
 //
